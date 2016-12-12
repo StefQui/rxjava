@@ -19,6 +19,7 @@ public class asyncrx {
     private Service2 service2 = new Service2();
     private Service3 service3 = new Service3();
     private Service4 service4 = new Service4();
+    private Service5 service5 = new Service5();
 
     @Test
     public void rx4() {
@@ -110,13 +111,28 @@ public class asyncrx {
                                 service3.operation(b3)
                                         .doOnNext(b4 -> logger.info(" SEND S3 s=" + b4.getMessage())),
                                 service4.operation(b3)
-                                        .doOnNext(b4 -> logger.info(" SEND S4 s=" + b4.getMessage())))
+                                        .doOnNext(b4 -> logger.info(" SEND S4 s=" + b4.getMessage())),
+                                Observable.just(b3)
+                                        .concatMap(new Func1<MyBuffer, Observable<MyBuffer>>() {
+                                            @Override
+                                            public Observable<MyBuffer> call(MyBuffer buf) {
+                                                service5.fetchProducts()
+                                                        .doOnNext(myProducts -> buf.setProducts(myProducts))
+                                                        .flatMap(myProducts -> Observable.from(myProducts))
+                                                        .flatMap(myProduct -> service5.populateProduct(myProduct)).toBlocking().subscribe();
+
+                                                logger.info("  products s=" + buf.getProducts());
+
+                                                return Observable.just(buf);
+                                            }
+                                        }).doOnNext(b4 -> logger.info(" SEND S5 s=" + b4.getMessage() + " " + b4.getProducts()))
+                                )
                                 .toList()
                 )
                 .doOnNext(b3 -> {
                     StringBuilder buf = new StringBuilder();
                     b3.stream().map(bu -> bu.getMessage()).forEach(buf::append);
-                    logger.info(" HI " + b3.get(0).getMessage());
+                    logger.info(" HI " + b3.get(0).getMessage() + " products-> " + b3.get(0).getProducts());
                 })
                 .toBlocking()
                 .subscribe(s -> {
@@ -128,8 +144,132 @@ public class asyncrx {
         logger.info("time taken: " + (end - start) / (1000 * 1000) + " ms");
     }
 
+    @Test
+    public void testProduct() throws Exception {
+
+        MyBuffer buf = new MyBuffer();
+
+        service5.fetchProducts()
+                .flatMap(products -> {
+                    buf.setProducts(products);
+                    return Observable.from(products)
+                            .flatMap(product -> service5.populateProduct(product));
+                })
+                .toBlocking()
+                .subscribe(s -> {
+                    logger.info("  finally s=" + s);
+                });;
+
+
+        logger.info("MyBuffer.products : " + buf.getProducts());
+
+
+
+    }
 
     @Test
+    public void testProduct2() throws Exception {
+
+        MyBuffer buf1 = new MyBuffer();
+
+        Observable.just(buf1)
+                .map(buf -> {
+                    buf.setMessage("toto");
+
+                            return Observable.just(buf);
+                        })
+                .subscribe(s -> {
+                    logger.info("  finally s=" + buf1.getMessage());
+                });
+        Observable.just(buf1)
+                .concatMap(new Func1<MyBuffer, Observable<MyBuffer>>() {
+                    @Override
+                    public Observable<MyBuffer> call(MyBuffer buf) {
+                        service5.fetchProducts()
+                                .doOnNext(myProducts -> buf.setProducts(myProducts))
+                                .flatMap(myProducts -> Observable.from(myProducts))
+                                .map(myProduct -> service5.populateProduct(myProduct))
+                                .toBlocking()
+                                .subscribe();
+                        logger.info("  products s=" + buf.getProducts());
+
+                        return Observable.just(buf);
+                    }
+                }).subscribe(s -> {
+            logger.info("  finally s=" + buf1.getProducts());
+        });
+
+//        Observable.just(buf1).switchOnNext(service5.fetchProducts());
+//                service5.fetchProducts())
+//                .reduce((buf, list) -> buf1.setProducts((List<MyProduct>) list));
+//                .map(buf -> {
+//                    return Observable.just(buf).switchMap(service5.fetchProducts());
+//
+//
+////                    return Observable.just(buf).concatWith(service5.fetchProducts()
+////                            .doOnNext(myProducts -> buf.setProducts(myProducts))
+////                            .flatMap(myProducts -> Observable.from(myProducts))
+////                            .map(myProduct -> service5.populateProduct(myProduct)));
+//                })
+//                .toBlocking()
+//                .subscribe(s -> {
+//                    logger.info("  finally s=" + buf1.getProducts());
+//                });
+
+//        Observable.just(buf)
+//                .switchMap(new Func1<MyBuffer, Observable<MyBuffer>>() {
+//                    @Override
+//                    public Observable<MyBuffer> call(MyBuffer myBuffer) {
+//                        service5.fetchProducts()
+//                                .doOnNext(myProducts -> myBuffer.setProducts(myProducts))
+//                                .flatMap(myProducts -> Observable.from(myProducts))
+//                                .map(myProduct -> service5.populateProduct(myProduct));
+//                            Observable.just(myBuffer)
+//                            .map(buf -> service5.fetchProducts()
+//                                    .doOnNext(myProducts -> myBuffer.setProducts(myProducts))
+//                                    .flatMap(myProducts -> Observable.from(myProducts))
+//                                    .map(myProduct -> service5.populateProduct(myProduct)));
+//                        });
+//                    }
+//                }).subscribe(s -> {
+//                    logger.info("  finally s=" + buf.getProducts());
+//                });
+
+
+//                .flatMap(new Func1<MyBuffer, Observable<MyBuffer>>() {
+//                    @Override
+//                    public Observable<MyBuffer> call(MyBuffer myBuffer) {
+//                        service5.fetchProducts()
+//                                .flatMap(products -> {
+//                                    myBuffer.setProducts(products);
+//                                    return Observable.from(products)
+//                                            .flatMap(product -> service5.populateProduct(product));
+//                                });
+//                        return Observable.just(myBuffer);
+//                    }
+//                }).subscribe(s -> {
+//            logger.info("  finally s=" + buf.getProducts());
+//        });
+//        service5.fetchProducts()
+//                .flatMap(products -> {
+//                    buf.setProducts(products);
+//                    return Observable.from(products)
+//                            .flatMap(product -> service5.populateProduct(product));
+//                })
+//                .toBlocking()
+//                .subscribe(s -> {
+//                    logger.info("  finally s=" + s);
+//                });;
+
+
+        logger.info("MyBuffer.products : " + buf1.getProducts());
+
+
+
+    }
+
+
+        @Test
     public void testFlatmap() throws Exception {
         Observable.range(1, 10)
                 .flatMap(v -> Observable.just(v).delay(11 - v, TimeUnit.SECONDS))
